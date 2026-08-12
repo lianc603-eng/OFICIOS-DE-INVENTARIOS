@@ -49,19 +49,20 @@ if uploaded_file is not None:
                 nombre_direccion_dest = st.text_input("Nombre de la Dirección Destinataria", value="CATASTRO")
                 destinatario_nombre = st.text_input("Nombre del Director / Titular Destinatario", value="LIC. JOSÉ DOMINGO [APELLIDOS]")
 
-            # Formatear el texto del área asignada
-            area_asignada_texto = f"DIRECCIÓN DE: {nombre_direccion_dest.upper()}"
+            # Formatear el texto sin los dos puntos
+            limpio_dest = nombre_direccion_dest.upper().replace("DIRECCIÓN DE", "").replace("DIRECCION DE", "").strip()
+            area_asignada_texto = f"DIRECCION DE {limpio_dest}"
 
             # Filtrar y estandarizar datos
             resguardante_clean = df_raw[col_resguardante].astype(str).str.upper().str.strip()
             
             # Filtro flexible para capturar variantes ("CATASTRO", "DIRECCION DE CATASTRO", etc.)
-            palabra_clave = nombre_direccion_dest.upper().replace("DIRECCIÓN DE", "").replace("DIRECCION DE", "").strip()
+            palabra_clave = limpio_dest
             filtro = resguardante_clean.str.contains(palabra_clave, na=False)
             df_filtrado = df_raw[filtro].copy()
 
             if len(df_filtrado) > 0:
-                # Estandarizar la columna para que siempre diga "DIRECCIÓN DE: [ÁREA]"
+                # Reemplazar el valor para que en la tabla diga exactamente "DIRECCION DE CATASTRO" (sin dos puntos)
                 df_filtrado[col_resguardante] = area_asignada_texto
                 
                 st.success(f"✅ Se encontraron {len(df_filtrado)} bienes asignados a {area_asignada_texto}.")
@@ -99,10 +100,10 @@ if uploaded_file is not None:
                     fecha_fmt = f"{fecha_oficio.day} de {meses[fecha_oficio.month - 1]} del {fecha_oficio.year}"
                     p_fecha = doc.add_paragraph(f"San Francisco de Campeche, Camp., a {fecha_fmt}\n")
 
-                    # Destinatario (Sin dirección física)
+                    # Destinatario
                     p_dest = doc.add_paragraph()
                     p_dest.add_run(f"{destinatario_nombre}\n").bold = True
-                    p_dest.add_run(f"DIRECTOR DE {nombre_direccion_dest.upper()}\n").bold = True
+                    p_dest.add_run(f"DIRECTOR DE {limpio_dest}\n").bold = True
                     p_dest.add_run("P R E S E N T E .-")
                     p_dest.paragraph_format.space_after = Pt(12)
 
@@ -157,7 +158,7 @@ if uploaded_file is not None:
                 st.download_button(
                     label="📄 Descargar Oficio Formal (.docx)",
                     data=generar_word_formal(df_bienes_final),
-                    file_name=f"Oficio_DDUMA_{nombre_direccion_dest.replace(' ', '_')}_{num_oficio.replace('/', '_')}.docx",
+                    file_name=f"Oficio_DDUMA_{limpio_dest.replace(' ', '_')}_{num_oficio.replace('/', '_')}.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
             else:
