@@ -10,7 +10,7 @@ import io
 st.set_page_config(page_title="Inventario DDUMA - Formatos de Verificación", layout="wide")
 
 st.title("📋 Control de Inventario - Formatos de Verificación en Campo")
-st.write("Sube tu archivo Excel para generar formatos imprimibles con espacio para anotar a mano qué compañero tiene cada bien.")
+st.write("Sube tu archivo Excel para filtrar por cualquier área o dirección, configurar destinatarios y generar formatos de verificación.")
 
 # 1. Cargar archivo Excel
 uploaded_file = st.file_uploader("📂 Sube aquí tu archivo Excel de Inventario", type=["xlsx", "xls"])
@@ -35,33 +35,42 @@ if uploaded_file is not None:
 
         if col_resguardante is not None:
             # Configuración general
-            st.subheader("⚙️ Configuración de la Dirección y Oficio")
+            st.subheader("⚙️ Configuración del Destinatario y Oficio")
             
             col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
 
             with col_cfg1:
-                nombre_direccion_dest = st.text_input("Dirección Destinataria", value="CATASTRO")
+                nombre_direccion_dest = st.text_input("Dirección / Area Destinataria", value="CATASTRO")
                 limpio_dest = nombre_direccion_dest.upper().replace("DIRECCIÓN DE", "").replace("DIRECCION DE", "").strip()
                 area_asignada_texto = f"DIRECCION DE {limpio_dest}"
 
+                tipo_cargo_dest = st.selectbox(
+                    "Cargo del Destinatario",
+                    ["DIRECTOR", "DIRECTORA", "SUBDIRECTOR", "SUBDIRECTORA", "JEFE DE DEPARTAMENTO", "JEFA DE DEPARTAMENTO", "TITULAR", "OTRO"]
+                )
+                if tipo_cargo_dest == "OTRO":
+                    cargo_dest_final = st.text_input("Escribe el cargo del destinatario", value="RESPONSABLE DE ÁREA").upper()
+                else:
+                    cargo_dest_final = f"{tipo_cargo_dest} DE {limpio_dest}"
+
             with col_cfg2:
-                destinatario_nombre = st.text_input("Director / Titular Destinatario", value="LIC. JOSÉ DOMINGO [APELLIDOS]")
+                destinatario_nombre = st.text_input("Nombre del Destinatario / Titular", value="LIC. JOSÉ DOMINGO [APELLIDOS]")
                 num_oficio = st.text_input("Número de Oficio", value="0542/DDUMA/2026")
 
             with col_cfg3:
                 remitente_nombre = st.text_input("Remitente (Titular DDUMA)", value="LIC. ROSENDO SÁNCHEZ PREVE")
-                remitente_cargo = st.text_input("Cargo Remitente", value="DIRECTORA DE DESARROLLO URBANO Y MEDIO AMBIENTE")
+                remitente_cargo = st.text_input("Cargo Remitente", value="DIRECTOR DE DESARROLLO URBANO Y MEDIO AMBIENTE")
                 fecha_oficio = st.date_input("Fecha del Oficio", value=datetime.now())
 
             st.markdown("---")
 
-            # Filtrar datos de la dependencia seleccionada
+            # Filtrar datos de la dependencia seleccionada dinámicamente
             resguardante_clean = df_raw[col_resguardante].astype(str).str.upper().str.strip()
             filtro = resguardante_clean.str.contains(limpio_dest, na=False)
             df_filtrado = df_raw[filtro].copy()
 
             if len(df_filtrado) > 0:
-                # Estandarizar la columna para que diga "DIRECCION DE CATASTRO"
+                # Estandarizar la columna para que diga "DIRECCION DE [ÁREA]"
                 df_filtrado[col_resguardante] = area_asignada_texto
                 
                 # ELIMINAR LA COLUMNA DE RESGUARDANTE ANTERIOR SI EXISTE
@@ -69,7 +78,7 @@ if uploaded_file is not None:
                 if cols_to_drop:
                     df_filtrado = df_filtrado.drop(columns=cols_to_drop)
 
-                # CAMBIO FORZOSO DE ENCABEZADO: De 'Resguardante Actual' a 'DIRECCIÓN'
+                # RENOMBRAR LA COLUMNA 'RESGUARDANTE ACTUAL' A 'DIRECCIÓN'
                 df_filtrado = df_filtrado.rename(columns={col_resguardante: "DIRECCIÓN"})
 
                 # COLUMNA EXCLUSIVA PARA ANOTAR A PLUMA EL COMPAÑERO / OBSERVACIONES
@@ -84,11 +93,10 @@ if uploaded_file is not None:
                 # TAB 1: FORMATO PARA IMPRIMIR Y ANOTAR A MANO
                 with tab1:
                     st.write("### Vista Previa de la Cédula de Verificación")
-                    st.write("Cédula con el encabezado cambiado a **'DIRECCIÓN'** y la columna para anotaciones manuales:")
+                    st.write("Esta tabla incluye la columna **'DIRECCIÓN'** y el espacio **'COMPAÑERO QUE LO TIENE / OBSERVACIONES'** para tomar notas en papel.")
                     
                     st.dataframe(df_filtrado_verificacion, use_container_width=True)
 
-                    # Función para convertir a Excel listo para imprimir
                     def convert_df_to_excel_print(df):
                         output = io.BytesIO()
                         with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -134,10 +142,10 @@ if uploaded_file is not None:
                         fecha_fmt = f"{fecha_oficio.day} de {meses[fecha_oficio.month - 1]} del {fecha_oficio.year}"
                         p_fecha = doc.add_paragraph(f"San Francisco de Campeche, Camp., a {fecha_fmt}\n")
 
-                        # Destinatario
+                        # Destinatario dinámico
                         p_dest = doc.add_paragraph()
-                        p_dest.add_run(f"{destinatario_nombre}\n").bold = True
-                        p_dest.add_run(f"DIRECTOR DE {limpio_dest}\n").bold = True
+                        p_dest.add_run(f"{destinatario_nombre.upper()}\n").bold = True
+                        p_dest.add_run(f"{cargo_dest_final.upper()}\n").bold = True
                         p_dest.add_run("P R E S E N T E .-")
                         p_dest.paragraph_format.space_after = Pt(12)
 
@@ -155,7 +163,7 @@ if uploaded_file is not None:
                             p.paragraph_format.space_after = Pt(6)
                             p.paragraph_format.line_spacing = 1.15
 
-                        # Tabla de Bienes en Word (Con la columna con encabezado 'DIRECCIÓN')
+                        # Tabla de Bienes en Word
                         table = doc.add_table(rows=1, cols=len(df_data.columns))
                         table.alignment = WD_TABLE_ALIGNMENT.CENTER
                         
@@ -178,15 +186,14 @@ if uploaded_file is not None:
                         
                         p_atentamente = doc.add_paragraph("A T E N T A M E N T E\n\n\n\n")
                         p_atentamente.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        p_atentamente.add_run(f"{remitente_nombre}\n").bold = True
-                        p_atentamente.add_run(f"{remitente_cargo}").bold = True
+                        p_atentamente.add_run(f"{remitente_nombre.upper()}\n").bold = True
+                        p_atentamente.add_run(f"{remitente_cargo.upper()}").bold = True
 
                         buffer = io.BytesIO()
                         doc.save(buffer)
                         buffer.seek(0)
                         return buffer
 
-                    # Botón para descargar Word
                     st.download_button(
                         label="📄 Descargar Oficio de Verificación (.docx)",
                         data=generar_word_verificacion(df_filtrado_verificacion),
@@ -194,7 +201,7 @@ if uploaded_file is not None:
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
             else:
-                st.warning(f"⚠️ No se encontraron bienes asignados a '{limpio_dest}'.")
+                st.warning(f"⚠️ No se encontraron bienes asignados a la palabra clave '{limpio_dest}'. Prueba escribiendo otra área o dirección.")
         else:
             st.error("❌ No se encontró la columna de resguardante en el archivo Excel.")
             
