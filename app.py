@@ -69,6 +69,9 @@ if uploaded_file is not None:
                 if cols_to_drop:
                     df_filtrado = df_filtrado.drop(columns=cols_to_drop)
 
+                # CAMBIO FORZOSO DE ENCABEZADO: De 'Resguardante Actual' a 'DIRECCIÓN'
+                df_filtrado = df_filtrado.rename(columns={col_resguardante: "DIRECCIÓN"})
+
                 # COLUMNA EXCLUSIVA PARA ANOTAR A PLUMA EL COMPAÑERO / OBSERVACIONES
                 df_filtrado_verificacion = df_filtrado.copy()
                 df_filtrado_verificacion["COMPAÑERO QUE LO TIENE / OBSERVACIONES"] = "____________________"
@@ -81,7 +84,7 @@ if uploaded_file is not None:
                 # TAB 1: FORMATO PARA IMPRIMIR Y ANOTAR A MANO
                 with tab1:
                     st.write("### Vista Previa de la Cédula de Verificación")
-                    st.write("Esta tabla incluye la columna **'COMPAÑERO QUE LO TIENE / OBSERVACIONES'** para tomar notas en papel (sin la columna de resguardante anterior).")
+                    st.write("Cédula con el encabezado cambiado a **'DIRECCIÓN'** y la columna para anotaciones manuales:")
                     
                     st.dataframe(df_filtrado_verificacion, use_container_width=True)
 
@@ -152,7 +155,7 @@ if uploaded_file is not None:
                             p.paragraph_format.space_after = Pt(6)
                             p.paragraph_format.line_spacing = 1.15
 
-                        # Tabla de Bienes en Word (Sin resguardante anterior)
+                        # Tabla de Bienes en Word (Con la columna con encabezado 'DIRECCIÓN')
                         table = doc.add_table(rows=1, cols=len(df_data.columns))
                         table.alignment = WD_TABLE_ALIGNMENT.CENTER
                         
