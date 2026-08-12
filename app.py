@@ -7,40 +7,35 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 import io
 
-st.set_page_config(page_title="Inventario DDUMA - Gestión de Bienes y Oficios", layout="wide")
+st.set_page_config(page_title="Inventario DDUMA - Formatos de Verificación", layout="wide")
 
-st.title("📋 Control de Inventario y Generador de Oficios - DDUMA")
-st.write("Sube tu archivo Excel de inventario para verificar, reasignar resguardantes y generar oficios formales.")
+st.title("📋 Control de Inventario - Formatos de Verificación en Campo")
+st.write("Sube tu archivo Excel para generar formatos imprimibles con espacio para anotar a mano qué compañero tiene cada bien.")
 
 # 1. Cargar archivo Excel
 uploaded_file = st.file_uploader("📂 Sube aquí tu archivo Excel de Inventario", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
     try:
-        # Cargar datos en estado de sesión para mantener los cambios de resguardante
-        if "df_inventario" not in st.session_state or st.sidebar.button("🔄 Recargar Excel Original"):
-            df_raw = pd.read_excel(uploaded_file)
-            df_raw.columns = df_raw.columns.astype(str).str.strip()
-            st.session_state.df_inventario = df_raw.copy()
-
-        df_current = st.session_state.df_inventario
+        df_raw = pd.read_excel(uploaded_file)
+        df_raw.columns = df_raw.columns.astype(str).str.strip()
 
         # Identificar la columna del resguardante
         col_resguardante = None
-        for col in df_current.columns:
+        for col in df_raw.columns:
             if "resguardante actual" in col.lower() or "resguardante_actual" in col.lower():
                 col_resguardante = col
                 break
         
         if col_resguardante is None:
-            for col in df_current.columns:
+            for col in df_raw.columns:
                 if "actual" in col.lower() or "resguardante" in col.lower():
                     col_resguardante = col
                     break
 
         if col_resguardante is not None:
-            # Configuración general de la Dirección Destinataria
-            st.subheader("⚙️ Configuración del Destinatario y Tipo de Oficio")
+            # Configuración general
+            st.subheader("⚙️ Configuración de la Dirección y Oficio")
             
             col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
 
@@ -60,56 +55,50 @@ if uploaded_file is not None:
 
             st.markdown("---")
 
-            # Filtrar datos de la área seleccionada
-            resguardante_clean = df_current[col_resguardante].astype(str).str.upper().str.strip()
+            # Filtrar datos de la dependencia seleccionada
+            resguardante_clean = df_raw[col_resguardante].astype(str).str.upper().str.strip()
             filtro = resguardante_clean.str.contains(limpio_dest, na=False)
-            df_filtrado = df_current[filtro].copy()
+            df_filtrado = df_raw[filtro].copy()
 
             if len(df_filtrado) > 0:
-                st.success(f"✅ Se encontraron {len(df_filtrado)} bienes relacionados con {area_asignada_texto}.")
+                # Estandarizar la columna para que diga "DIRECCION DE CATASTRO"
+                df_filtrado[col_resguardante] = area_asignada_texto
+                
+                # COLUMNA EXCLUSIVA PARA ANOTAR A PLUMA EL COMPAÑERO / UBICACIÓN
+                df_filtrado_verificacion = df_filtrado.copy()
+                df_filtrado_verificacion["COMPAÑERO QUE LO TIENE / OBSERVACIONES"] = "____________________"
 
-                # Pestanas interactiva: Reasignar vs Oficio
-                tab1, tab2 = st.tabs(["👤 Reasignar Compañero / Resguardante", "📄 Generar Oficio de Verificación"])
+                st.success(f"✅ Se encontraron {len(df_filtrado)} bienes en {area_asignada_texto}.")
 
-                # TAB 1: REASIGNACIÓN DIRECTA
+                # Pestañas: Plantilla Imprimible Excel vs Oficio Word
+                tab1, tab2 = st.tabs(["🖨️ Formato Imprimible de Verificación (Excel/PDF)", "📄 Oficio Formal de Verificación (Word)"])
+
+                # TAB 1: FORMATO PARA IMPRIMIR Y ANOTAR A MANO
                 with tab1:
-                    st.write("### Asignar un compañero o resguardante específico a los bienes")
+                    st.write("### Vista Previa de la Cédula de Verificación")
+                    st.write("Esta tabla incluye la columna **'COMPAÑERO QUE LO TIENE / OBSERVACIONES'** para tomar notas en papel.")
                     
-                    col_mod1, col_mod2 = st.columns([2, 1])
-                    with col_mod1:
-                        # Identificar columna clave (Clave Inventario o primera columna)
-                        col_clave = df_filtrado.columns[0]
-                        bienes_opciones = df_filtrado[col_clave].astype(str) + " - " + df_filtrado.iloc[:, 1].astype(str)
-                        bien_seleccionado = st.selectbox("Selecciona el bien a reasignar:", bienes_opciones)
-                        clave_elegida = bien_seleccionado.split(" - ")[0]
+                    st.dataframe(df_filtrado_verificacion, use_container_width=True)
 
-                    with col_mod2:
-                        nuevo_resguardante = st.text_input("Nombre del nuevo resguardante (Ej. Juan Pérez - Catastro)")
-                        if st.button("✏️ Actualizar Resguardante"):
-                            if nuevo_resguardante.strip():
-                                idx_target = st.session_state.df_inventario[
-                                    st.session_state.df_inventario[col_clave].astype(str) == clave_elegida
-                                ].index
-                                st.session_state.df_inventario.loc[idx_target, col_resguardante] = nuevo_resguardante.strip().upper()
-                                st.success(f"¡Resguardante actualizado a '{nuevo_resguardante.upper()}'!")
-                                st.rerun()
+                    # Función para convertir a Excel listo para imprimir
+                    def convert_df_to_excel_print(df):
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            df.to_excel(writer, index=False, sheet_name='Cedula_Verificacion')
+                        output.seek(0)
+                        return output
 
-                    st.write("#### Lista Actualizada de Bienes")
-                    df_bienes_editados = st.data_editor(df_filtrado, use_container_width=True, key="editor_bienes")
-
-                # TAB 2: GENERACIÓN DEL OFICIO DE VERIFICACIÓN
-                with tab2:
-                    st.write("### Solicitud de Verificación Física de Bienes")
-                    
-                    tipo_oficio = st.radio(
-                        "Selecciona el motivo del oficio:",
-                        [
-                            "1. Solicitud de Verificación Física en Campo (Confirmar si los bienes se encuentran físicamente en su área)",
-                            "2. Solicitud de Regularización y Cambio Formal de Resguardo"
-                        ]
+                    st.download_button(
+                        label="🟢 Descargar Excel de Verificación en Campo",
+                        data=convert_df_to_excel_print(df_filtrado_verificacion),
+                        file_name=f"Cedula_Verificacion_{limpio_dest}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 
-                    # Función para Generar el Word
+                # TAB 2: GENERACIÓN DEL OFICIO WORD DE VERIFICACIÓN
+                with tab2:
+                    st.write("### Generación del Oficio Formal para Verificación de Bienes")
+
                     def generar_word_verificacion(df_data):
                         doc = docx.Document()
 
@@ -119,20 +108,18 @@ if uploaded_file is not None:
                             section.left_margin = Inches(0.8)
                             section.right_margin = Inches(0.8)
 
-                        # Lema
+                        # Lema del año
                         p_lema = doc.add_paragraph('"2026, Año de Margarita Maza Parada"')
                         p_lema.alignment = WD_ALIGN_PARAGRAPH.CENTER
                         p_lema.runs[0].font.italic = True
                         p_lema.runs[0].font.size = Pt(8.5)
 
-                        # Encabezado
+                        # Metadatos
                         p_meta = doc.add_paragraph()
                         p_meta.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                         p_meta.add_run("DIRECCIÓN DE DESARROLLO URBANO Y MEDIO AMBIENTE\n").bold = True
                         p_meta.add_run(f"OFICIO: {num_oficio}\n").bold = True
-                        
-                        asunto_txt = "Solicitud de verificación e inspección física de bienes muebles en sus instalaciones." if "1" in tipo_oficio else f"Notificación y solicitud de regularización de resguardos en la {area_asignada_texto}."
-                        p_meta.add_run(f"ASUNTO: {asunto_txt}\n").bold = True
+                        p_meta.add_run(f"ASUNTO: Solicitud de verificación e inspección física de bienes muebles en sus instalaciones.\n").bold = True
 
                         # Fecha
                         meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
@@ -146,21 +133,13 @@ if uploaded_file is not None:
                         p_dest.add_run("P R E S E N T E .-")
                         p_dest.paragraph_format.space_after = Pt(12)
 
-                        # Cuerpo dinámico según la opción elegida
-                        if "1" in tipo_oficio:
-                            parrafos = [
-                                "Me dirijo a usted de la manera más atenta en el marco de las actividades de control, seguimiento y actualización del inventario patrimonial de este H. Ayuntamiento.",
-                                f"Sobre el particular, le solicito atentamente su valioso apoyo a efecto de realizar la verificación y constatación física en campo de los bienes muebles que a continuación se relacionan, los cuales se tienen ubicados preliminarmente en las instalaciones y áreas operativas de la {area_asignada_texto} a su digno cargo.",
-                                "Agradeceré se sirva confirmar si dichos bienes se encuentran efectivamente en su área y, en su caso, nos proporcione el nombre del servidor público que los tiene bajo su resguardo u operatividad directa, a fin de proceder con la actualización de los registros institucionales.",
-                                "La relación de los bienes a verificar se detalla a continuación:"
-                            ]
-                        else:
-                            parrafos = [
-                                "Me dirijo a usted de la manera más atenta con relación a las acciones de verificación y depuración del inventario físico de esta Dirección de Desarrollo Urbano y Medio Ambiente.",
-                                f"Hago de su conocimiento que se ha identificado la presencia de diversos bienes muebles patrimoniales asignados a la {area_asignada_texto} a su digno cargo.",
-                                "En virtud de lo anterior, le solicito atentamente girar sus apreciables instrucciones para proceder con la formalización del cambio de resguardo en el Catálogo General de Bienes Muebles del Municipio.",
-                                "A continuación, se detalla la relación de los bienes muebles antes referidos:"
-                            ]
+                        # Cuerpo enfocado puramente en verificar existencia y usuario actual
+                        parrafos = [
+                            "Me dirijo a usted de la manera más atenta en el marco de las actividades de control, seguimiento y actualización del inventario patrimonial de este H. Ayuntamiento.",
+                            f"Sobre el particular, le solicito atentamente su valioso apoyo a efecto de realizar la verificación y constatación física en campo de los bienes muebles que a continuación se relacionan, los cuales se tienen ubicados preliminarmente en las instalaciones y áreas operativas de la {area_asignada_texto} a su digno cargo.",
+                            "Agradeceré se sirva confirmar la localización física de dichos bienes e identificar al compañero o servidor público que los tiene actualmente bajo su uso u operatividad directa, a fin de mantener actualizados los registros institucionales.",
+                            "La relación de los bienes sujetos a verificación física se detalla a continuación:"
+                        ]
 
                         for p_text in parrafos:
                             p = doc.add_paragraph(p_text)
@@ -168,7 +147,7 @@ if uploaded_file is not None:
                             p.paragraph_format.space_after = Pt(6)
                             p.paragraph_format.line_spacing = 1.15
 
-                        # Tabla de Bienes en Word
+                        # Tabla de Bienes en Word (Con espacio para tomar notas a pluma)
                         table = doc.add_table(rows=1, cols=len(df_data.columns))
                         table.alignment = WD_TABLE_ALIGNMENT.CENTER
                         
@@ -185,7 +164,7 @@ if uploaded_file is not None:
                                 row_cells[col_idx].text = val
                                 row_cells[col_idx].paragraphs[0].runs[0].font.size = Pt(8)
 
-                        # Firma
+                        # Cierre y Firma del Remitente
                         p_cierre = doc.add_paragraph("\nSin otro particular por el momento, le reitero la seguridad de mi atenta y distinguida consideración.\n")
                         p_cierre.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
                         
@@ -199,15 +178,15 @@ if uploaded_file is not None:
                         buffer.seek(0)
                         return buffer
 
-                    # Botón de Descarga del Oficio
+                    # Botón para descargar Word
                     st.download_button(
-                        label="📄 Descargar Oficio Personalizado (.docx)",
-                        data=generar_word_verificacion(df_filtrado),
+                        label="📄 Descargar Oficio de Verificación (.docx)",
+                        data=generar_word_verificacion(df_filtrado_verificacion),
                         file_name=f"Oficio_Verificacion_{limpio_dest}_{num_oficio.replace('/', '_')}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
             else:
-                st.warning(f"⚠️ No se encontraron bienes relacionados con '{limpio_dest}'.")
+                st.warning(f"⚠️ No se encontraron bienes asignados a '{limpio_dest}'.")
         else:
             st.error("❌ No se encontró la columna de resguardante en el archivo Excel.")
             
