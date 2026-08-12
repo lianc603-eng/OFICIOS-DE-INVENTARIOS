@@ -20,7 +20,7 @@ if uploaded_file is not None:
         df_raw = pd.read_excel(uploaded_file)
         df_raw.columns = df_raw.columns.astype(str).str.strip()
 
-        # Identificar la columna del resguardante
+        # Identificar la columna del resguardante actual
         col_resguardante = None
         for col in df_raw.columns:
             if "resguardante actual" in col.lower() or "resguardante_actual" in col.lower():
@@ -64,19 +64,24 @@ if uploaded_file is not None:
                 # Estandarizar la columna para que diga "DIRECCION DE CATASTRO"
                 df_filtrado[col_resguardante] = area_asignada_texto
                 
-                # COLUMNA EXCLUSIVA PARA ANOTAR A PLUMA EL COMPAÑERO / UBICACIÓN
+                # ELIMINAR LA COLUMNA DE RESGUARDANTE ANTERIOR SI EXISTE
+                cols_to_drop = [c for c in df_filtrado.columns if "anterior" in c.lower()]
+                if cols_to_drop:
+                    df_filtrado = df_filtrado.drop(columns=cols_to_drop)
+
+                # COLUMNA EXCLUSIVA PARA ANOTAR A PLUMA EL COMPAÑERO / OBSERVACIONES
                 df_filtrado_verificacion = df_filtrado.copy()
                 df_filtrado_verificacion["COMPAÑERO QUE LO TIENE / OBSERVACIONES"] = "____________________"
 
                 st.success(f"✅ Se encontraron {len(df_filtrado)} bienes en {area_asignada_texto}.")
 
                 # Pestañas: Plantilla Imprimible Excel vs Oficio Word
-                tab1, tab2 = st.tabs(["🖨️ Formato Imprimible de Verificación (Excel/PDF)", "📄 Oficio Formal de Verificación (Word)"])
+                tab1, tab2 = st.tabs(["🖨️ Formato Imprimible de Verificación (Excel)", "📄 Oficio Formal de Verificación (Word)"])
 
                 # TAB 1: FORMATO PARA IMPRIMIR Y ANOTAR A MANO
                 with tab1:
                     st.write("### Vista Previa de la Cédula de Verificación")
-                    st.write("Esta tabla incluye la columna **'COMPAÑERO QUE LO TIENE / OBSERVACIONES'** para tomar notas en papel.")
+                    st.write("Esta tabla incluye la columna **'COMPAÑERO QUE LO TIENE / OBSERVACIONES'** para tomar notas en papel (sin la columna de resguardante anterior).")
                     
                     st.dataframe(df_filtrado_verificacion, use_container_width=True)
 
@@ -133,7 +138,7 @@ if uploaded_file is not None:
                         p_dest.add_run("P R E S E N T E .-")
                         p_dest.paragraph_format.space_after = Pt(12)
 
-                        # Cuerpo enfocado puramente en verificar existencia y usuario actual
+                        # Cuerpo
                         parrafos = [
                             "Me dirijo a usted de la manera más atenta en el marco de las actividades de control, seguimiento y actualización del inventario patrimonial de este H. Ayuntamiento.",
                             f"Sobre el particular, le solicito atentamente su valioso apoyo a efecto de realizar la verificación y constatación física en campo de los bienes muebles que a continuación se relacionan, los cuales se tienen ubicados preliminarmente en las instalaciones y áreas operativas de la {area_asignada_texto} a su digno cargo.",
@@ -147,7 +152,7 @@ if uploaded_file is not None:
                             p.paragraph_format.space_after = Pt(6)
                             p.paragraph_format.line_spacing = 1.15
 
-                        # Tabla de Bienes en Word (Con espacio para tomar notas a pluma)
+                        # Tabla de Bienes en Word (Sin resguardante anterior)
                         table = doc.add_table(rows=1, cols=len(df_data.columns))
                         table.alignment = WD_TABLE_ALIGNMENT.CENTER
                         
